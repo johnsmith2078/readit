@@ -1,6 +1,6 @@
 # Readit MVP
 
-Windows-first Tauri 2 MVP for hovering over accessible text, drawing a translucent bordered overlay directly over the text paragraph, and reading the text aloud with `edge-tts`.
+Windows-first Tauri 2 MVP for hovering over accessible text, drawing a translucent bordered overlay directly over the text paragraph, and reading the text aloud with a Rust Edge TTS module.
 
 ## Features
 
@@ -10,7 +10,7 @@ Windows-first Tauri 2 MVP for hovering over accessible text, drawing a transluce
 - Clicking the paragraph overlay reads the hovered text; playback shows a semi-transparent playing state inside the same border.
 - Fallback global shortcut: `Ctrl+Alt+R`; if it is already registered by another app, Readit still starts and hover overlay remains available.
 - Manual capture/read buttons in the app window.
-- `edge-tts` speech synthesis through the local Python environment.
+- Rust Edge TTS speech synthesis without a Python runtime.
 - MP3 playback through Rust `rodio`.
 
 ## Prerequisites
@@ -18,12 +18,6 @@ Windows-first Tauri 2 MVP for hovering over accessible text, drawing a transluce
 - Windows 10/11.
 - Node.js and npm.
 - Rust stable toolchain.
-- Python 3.10+.
-- `edge-tts` installed in the Python environment used by `python`:
-
-```powershell
-python -m pip install edge-tts
-```
 
 ## Development
 
@@ -57,8 +51,8 @@ Debug installers:
 - Browser text, some PDF text layers, and native text controls may work; image-only PDFs, Canvas, games, remote desktops, and custom-rendered controls may not.
 - Current paragraph detection is a simple best-effort heuristic using accessible document text.
 - Hover detection is best-effort and uses UI Automation text exposure; unsupported targets are ignored silently.
-- `edge-tts` uses an online speech service; avoid reading sensitive content.
-- This MVP calls `python -c ...` directly instead of shipping a bundled sidecar.
+- The Rust Edge TTS module uses an online speech service; avoid reading sensitive content.
+- TTS is implemented in `src-tauri/src/tts.rs`; no Python sidecar is required.
 
 ## Important Files
 
@@ -66,4 +60,6 @@ Debug installers:
 - Styles: `src/styles.css`
 - Tauri config: `src-tauri/tauri.conf.json`
 - Rust backend: `src-tauri/src/lib.rs`
+- Rust TTS module: `src-tauri/src/tts.rs`
 - Feasibility plan: `TAURI2_READIT_FEASIBILITY_PLAN.md`
+

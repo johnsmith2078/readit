@@ -49,7 +49,7 @@ const copy = {
   captureOnly: "\u4ec5\u8bfb\u53d6\u6587\u672c",
   mainInteraction: "\u4e3b\u4ea4\u4e92\uff1a\u60ac\u505c\u6587\u672c\u6bb5 \u2192 \u70b9\u51fb\u8986\u76d6\u8fb9\u6846\u64ad\u653e",
   ttsSettings: "TTS \u8bbe\u7f6e",
-  installHint: "\u9996\u6b21\u4f7f\u7528\u524d\u8bf7\u8fd0\u884c\uff1a",
+  installHint: "TTS 由 Rust 后端直接合成，无需安装 Python edge-tts。",
   recent: "\u6700\u8fd1\u8bfb\u53d6",
   textareaPlaceholder: "\u8bfb\u53d6\u5230\u7684\u6587\u672c\u4f1a\u663e\u793a\u5728\u8fd9\u91cc\uff0c\u4e5f\u53ef\u4ee5\u624b\u52a8\u8f93\u5165\u6587\u672c\u6717\u8bfb\u3002",
   speakTextarea: "\u6717\u8bfb\u6587\u672c\u6846\u5185\u5bb9",
@@ -242,7 +242,7 @@ function App() {
             />
           </label>
           <p className="hint">
-            {copy.installHint}<code>python -m pip install edge-tts</code>
+            {copy.installHint}
           </p>
         </div>
 
@@ -274,3 +274,4 @@ function App() {
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>{isOverlayWindow ? <OverlayApp /> : <App />}</React.StrictMode>,
 );
+

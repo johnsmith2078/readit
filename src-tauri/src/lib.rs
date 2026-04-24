@@ -3,19 +3,13 @@ use std::{
     fs::File,
     io::BufReader,
     path::PathBuf,
-    process::Stdio,
-    sync::{
-        Arc, Mutex, OnceLock,
-    },
-    time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex, OnceLock},
+    time::Duration as StdDuration,
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use thiserror::Error;
-use tokio::{io::AsyncWriteExt, process::Command, time::Duration};
-
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+mod tts;
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -28,17 +22,16 @@ use windows::{
                 COINIT_APARTMENTTHREADED,
             },
             Threading::{
-                GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,
-                PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+                GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+                PROCESS_QUERY_LIMITED_INFORMATION,
             },
         },
         UI::{
             Accessibility::{
-                CUIAutomation, IUIAutomation, IUIAutomationTextPattern, IUIAutomationTextRange, UIA_TextPatternId,
+                CUIAutomation, IUIAutomation, IUIAutomationTextPattern, IUIAutomationTextRange,
+                UIA_TextPatternId,
             },
-            WindowsAndMessaging::{
-GetCursorPos, GetWindowThreadProcessId, WindowFromPoint,
-            },
+            WindowsAndMessaging::{GetCursorPos, GetWindowThreadProcessId, WindowFromPoint},
         },
     },
 };
@@ -123,7 +116,6 @@ struct AppState {
 static MOUSE_HOOK_APP: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
-
 #[tauri::command]
 async fn capture_text_under_cursor() -> Result<CaptureResult, ReaditError> {
     capture_text_under_cursor_impl()
@@ -136,7 +128,13 @@ async fn speak_text(
     text: String,
     options: Option<SpeakOptions>,
 ) -> Result<(), ReaditError> {
-    speak_text_impl(app, state.inner().clone(), text, options.unwrap_or_default()).await
+    speak_text_impl(
+        app,
+        state.inner().clone(),
+        text,
+        options.unwrap_or_default(),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -169,7 +167,13 @@ async fn speak_hover_text(
         .clone()
         .ok_or(ReaditError::NoText)?;
 
-    speak_text_impl(app, state.inner().clone(), text.clone(), options.unwrap_or_default()).await?;
+    speak_text_impl(
+        app,
+        state.inner().clone(),
+        text.clone(),
+        options.unwrap_or_default(),
+    )
+    .await?;
     Ok(text)
 }
 
@@ -265,9 +269,6 @@ pub fn run() {
         .expect("error while running Readit");
 }
 
-
-
-
 fn setup_overlay_window(app: &AppHandle) -> Result<(), tauri::Error> {
     let overlay = WebviewWindowBuilder::new(
         app,
@@ -342,7 +343,8 @@ fn start_hover_probe(app: AppHandle) {
                     continue;
                 }
 
-                let moved = (point.x - last_point.x).abs() > 3 || (point.y - last_point.y).abs() > 3;
+                let moved =
+                    (point.x - last_point.x).abs() > 3 || (point.y - last_point.y).abs() > 3;
                 if moved {
                     last_point = point;
                     stable_ticks = 0;
@@ -368,7 +370,8 @@ fn start_hover_probe(app: AppHandle) {
 
                         if text != last_text {
                             if let Some(state) = app.try_state::<Arc<AppState>>() {
-                                *state.hover_text.lock().expect("hover text state poisoned") = Some(text.clone());
+                                *state.hover_text.lock().expect("hover text state poisoned") =
+                                    Some(text.clone());
                             }
                             show_overlay(&app, captured.bounds.as_ref(), &text);
                             active_bounds = captured.bounds.clone();
@@ -391,13 +394,18 @@ fn start_hover_probe(app: AppHandle) {
         .expect("failed to spawn hover probe thread");
 }
 
-
 #[cfg(target_os = "windows")]
 fn rect_contains_point(rect: &ScreenRect, point: POINT, padding: i32) -> bool {
     let left = rect.x.saturating_sub(padding);
     let top = rect.y.saturating_sub(padding);
-    let right = rect.x.saturating_add(rect.width as i32).saturating_add(padding);
-    let bottom = rect.y.saturating_add(rect.height as i32).saturating_add(padding);
+    let right = rect
+        .x
+        .saturating_add(rect.width as i32)
+        .saturating_add(padding);
+    let bottom = rect
+        .y
+        .saturating_add(rect.height as i32)
+        .saturating_add(padding);
 
     point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
 }
@@ -540,7 +548,6 @@ fn point_belongs_to_current_process(point: POINT) -> bool {
     }
 }
 
-
 fn is_app_speaking(app: &AppHandle) -> bool {
     app.try_state::<Arc<AppState>>()
         .map(|state| *state.is_speaking.lock().expect("speaking state poisoned"))
@@ -576,14 +583,16 @@ async fn speak_text_impl(
     {
         let mut is_speaking = state.is_speaking.lock().expect("speaking state poisoned");
         if *is_speaking {
-            return Err(ReaditError::Audio("Another text is already being spoken".into()));
+            return Err(ReaditError::Audio(
+                "Another text is already being spoken".into(),
+            ));
         }
         *is_speaking = true;
     }
 
     let result = async {
-        emit_status(&app, "busy", "Generating speech with edge-tts...");
-        let audio_path = synthesize_with_edge_tts(&text, &options).await?;
+        emit_status(&app, "busy", "Generating speech with Rust Edge TTS...");
+        let audio_path = synthesize_speech(&text, &options).await?;
         emit_status(&app, "busy", "Playing audio...");
         play_audio_file(audio_path, state.clone()).await?;
         emit_status(&app, "idle", "Finished reading");
@@ -602,88 +611,14 @@ async fn speak_text_impl(
     result
 }
 
-async fn synthesize_with_edge_tts(text: &str, options: &SpeakOptions) -> Result<PathBuf, ReaditError> {
-    let mut path = std::env::temp_dir();
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| ReaditError::EdgeTts(error.to_string()))?
-        .as_millis();
-    path.push(format!("readit-{millis}.mp3"));
-
-    let voice = options
-        .voice
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("zh-CN-XiaoxiaoNeural");
-    let rate = options
-        .rate
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("+0%");
-    let volume = options
-        .volume
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("+0%");
-
-    let script = r#"
-import asyncio
-import pathlib
-import sys
-import edge_tts
-
-async def main():
-    output = pathlib.Path(sys.argv[1])
-    voice = sys.argv[2]
-    rate = sys.argv[3]
-    volume = sys.argv[4]
-    text = sys.stdin.buffer.read().decode("utf-8", "ignore")
-    text = text.encode("utf-8", "ignore").decode("utf-8", "ignore")
-    communicate = edge_tts.Communicate(text, voice=voice, rate=rate, volume=volume)
-    await communicate.save(str(output))
-
-asyncio.run(main())
-"#;
-
-    let mut command = Command::new("python");
-    command
-        .arg("-c")
-        .arg(script)
-        .arg(&path)
-        .arg(voice)
-        .arg(rate)
-        .arg(volume)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    #[cfg(target_os = "windows")]
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| ReaditError::EdgeTts(format!("failed to start python: {error}")))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(text.as_bytes()).await?;
-    }
-
-    let output = tokio::time::timeout(Duration::from_secs(45), child.wait_with_output())
-        .await
-        .map_err(|_| ReaditError::EdgeTts("timed out while generating speech".into()))?
-        .map_err(|error| ReaditError::EdgeTts(error.to_string()))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let message = if stderr.is_empty() {
-            "edge-tts process exited unsuccessfully".into()
-        } else {
-            stderr
-        };
-        return Err(ReaditError::EdgeTts(message));
-    }
-
-    Ok(path)
+async fn synthesize_speech(text: &str, options: &SpeakOptions) -> Result<PathBuf, ReaditError> {
+    tts::synthesize_to_temp_mp3(
+        text,
+        options.voice.as_deref(),
+        options.rate.as_deref(),
+        options.volume.as_deref(),
+    )
+    .await
 }
 
 async fn play_audio_file(path: PathBuf, state: Arc<AppState>) -> Result<(), ReaditError> {
@@ -744,8 +679,9 @@ fn capture_text_under_cursor_impl() -> Result<CaptureResult, ReaditError> {
         }
 
         let _com = ComApartment::init()?;
-        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
-            .map_err(|_| ReaditError::NoElement)?;
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                .map_err(|_| ReaditError::NoElement)?;
         let element = automation
             .ElementFromPoint(point)
             .map_err(|_| ReaditError::NoElement)?;
@@ -784,7 +720,6 @@ fn capture_text_under_cursor_impl() -> Result<CaptureResult, ReaditError> {
     Err(ReaditError::UnsupportedPlatform)
 }
 
-
 #[cfg(target_os = "windows")]
 fn screen_rect_from_rect(rect: RECT) -> Option<ScreenRect> {
     let width = rect.right.saturating_sub(rect.left);
@@ -797,8 +732,12 @@ fn screen_rect_from_rect(rect: RECT) -> Option<ScreenRect> {
     Some(ScreenRect {
         x: rect.left.saturating_sub(padding),
         y: rect.top.saturating_sub(padding),
-        width: (width as u32).saturating_add((padding * 2) as u32).clamp(80, 1200),
-        height: (height as u32).saturating_add((padding * 2) as u32).clamp(28, 420),
+        width: (width as u32)
+            .saturating_add((padding * 2) as u32)
+            .clamp(80, 1200),
+        height: (height as u32)
+            .saturating_add((padding * 2) as u32)
+            .clamp(28, 420),
     })
 }
 
@@ -827,15 +766,21 @@ impl Drop for ComApartment {
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn is_password_field(element: &windows::Win32::UI::Accessibility::IUIAutomationElement) -> bool {
-    element.CurrentIsPassword().map(|value| value.as_bool()).unwrap_or(false)
+unsafe fn is_password_field(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+) -> bool {
+    element
+        .CurrentIsPassword()
+        .map(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[cfg(target_os = "windows")]
-
-
 #[cfg(target_os = "windows")]
-unsafe fn range_text(range: &IUIAutomationTextRange, max_length: i32) -> Result<String, ReaditError> {
+unsafe fn range_text(
+    range: &IUIAutomationTextRange,
+    max_length: i32,
+) -> Result<String, ReaditError> {
     let text: BSTR = range.GetText(max_length).map_err(|_| ReaditError::NoText)?;
     Ok(text.to_string())
 }
@@ -891,7 +836,6 @@ fn normalize_text(text: &str) -> String {
 
     output.trim().to_string()
 }
-
 
 fn sanitize_for_tts(text: &str) -> String {
     text.chars()

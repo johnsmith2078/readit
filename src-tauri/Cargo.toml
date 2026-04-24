@@ -1,7 +1,7 @@
 [package]
 name = "readit"
 version = "0.1.0"
-description = "Read text near the mouse cursor aloud using edge-tts"
+description = "Read text near the mouse cursor aloud using Rust Edge TTS"
 authors = ["readit"]
 edition = "2021"
 
@@ -19,7 +19,8 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["process", "fs", "io-util", "time"] }
+tokio = { version = "1", features = ["fs", "time"] }
+edge-tts-rust = "0.1.3"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_System_Com",
