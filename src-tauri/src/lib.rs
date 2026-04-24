@@ -9,10 +9,13 @@ use std::{
     },
     time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use thiserror::Error;
 use tokio::{io::AsyncWriteExt, process::Command, time::Duration};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -253,6 +256,11 @@ pub fn run() {
             speak_hover_text,
             stop_speaking
         ])
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
+                window.app_handle().exit(0);
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running Readit");
 }
@@ -637,7 +645,8 @@ async def main():
 asyncio.run(main())
 "#;
 
-    let mut child = Command::new("python")
+    let mut command = Command::new("python");
+    command
         .arg("-c")
         .arg(script)
         .arg(&path)
@@ -646,7 +655,12 @@ asyncio.run(main())
         .arg(volume)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
         .spawn()
         .map_err(|error| ReaditError::EdgeTts(format!("failed to start python: {error}")))?;
 
