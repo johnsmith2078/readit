@@ -16,15 +16,18 @@ use tokio::{io::AsyncWriteExt, process::Command, time::Duration};
 
 #[cfg(target_os = "windows")]
 use windows::{
-    core::{Interface, BSTR},
+    core::{Interface, BSTR, PWSTR},
     Win32::{
-        Foundation::{POINT, RECT, S_OK},
+        Foundation::{CloseHandle, POINT, RECT, S_OK},
         System::{
             Com::{
                 CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
                 COINIT_APARTMENTTHREADED,
             },
-            Threading::GetCurrentProcessId,
+            Threading::{
+                GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,
+                PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+            },
         },
         UI::{
             Accessibility::{
@@ -308,6 +311,14 @@ fn start_hover_probe(app: AppHandle) {
                     continue;
                 }
 
+                if point_is_in_inactive_app(point) {
+                    hide_overlay(&app);
+                    last_text.clear();
+                    active_bounds = None;
+                    stable_ticks = 0;
+                    continue;
+                }
+
                 if let Some(bounds) = active_bounds.as_ref() {
                     if rect_contains_point(bounds, point, 2) || is_app_speaking(&app) {
                         continue;
@@ -419,6 +430,92 @@ fn hide_overlay(app: &AppHandle) {
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.hide();
     }
+}
+
+#[cfg(target_os = "windows")]
+fn point_is_in_inactive_app(point: POINT) -> bool {
+    window_process_name_from_point(point)
+        .as_deref()
+        .map(is_inactive_process_name)
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn is_inactive_process_name(process_name: &str) -> bool {
+    matches!(
+        process_name.to_ascii_lowercase().as_str(),
+        "cmd.exe"
+            | "powershell.exe"
+            | "pwsh.exe"
+            | "windowsterminal.exe"
+            | "wt.exe"
+            | "conhost.exe"
+            | "openconsole.exe"
+            | "code.exe"
+            | "code-insiders.exe"
+            | "cursor.exe"
+            | "windsurf.exe"
+            | "trae.exe"
+            | "notepad++.exe"
+            | "sublime_text.exe"
+            | "atom.exe"
+            | "zed.exe"
+            | "devenv.exe"
+            | "rider64.exe"
+            | "idea64.exe"
+            | "pycharm64.exe"
+            | "webstorm64.exe"
+            | "phpstorm64.exe"
+            | "clion64.exe"
+            | "rustrover64.exe"
+            | "goland64.exe"
+            | "rubymine64.exe"
+            | "eclipse.exe"
+            | "notepad.exe"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn window_process_name_from_point(point: POINT) -> Option<String> {
+    unsafe {
+        let window = WindowFromPoint(point);
+        if window.0.is_null() {
+            return None;
+        }
+
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, Some(&mut process_id));
+        if process_id == 0 || process_id == GetCurrentProcessId() {
+            return None;
+        }
+
+        process_name_from_id(process_id)
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn process_name_from_id(process_id: u32) -> Option<String> {
+    let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id).ok()?;
+    let mut buffer = [0u16; 1024];
+    let mut size = buffer.len() as u32;
+
+    let result = QueryFullProcessImageNameW(
+        process,
+        PROCESS_NAME_WIN32,
+        PWSTR(buffer.as_mut_ptr()),
+        &mut size,
+    );
+    let _ = CloseHandle(process);
+
+    if result.is_err() || size == 0 {
+        return None;
+    }
+
+    let path = String::from_utf16_lossy(&buffer[..size as usize]);
+    PathBuf::from(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
 }
 
 #[cfg(target_os = "windows")]
