@@ -1,0 +1,31 @@
+[package]
+name = "readit"
+version = "0.1.0"
+description = "Read text near the mouse cursor aloud using edge-tts"
+authors = ["readit"]
+edition = "2021"
+
+[lib]
+name = "readit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["process", "fs", "io-util", "time"] }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Threading",
+  "Win32_UI_Accessibility",
+  "Win32_UI_WindowsAndMessaging"
+] }
+rodio = "0.20"
+tempfile = "3"

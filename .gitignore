@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+build/
+.vite/
+
+# Tauri / Rust build output
+src-tauri/target/
+target/
+
+# Tauri generated files
+src-tauri/gen/
+
+# Tauri bundled binaries and local sidecars
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.dll
+src-tauri/binaries/*.pdb
+src-tauri/binaries/*.msi
+src-tauri/binaries/*.zip
+!src-tauri/binaries/.gitkeep
+
+# Python cache / virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# Test / coverage caches
+coverage/
+.nyc_output/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
